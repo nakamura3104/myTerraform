@@ -1,0 +1,254 @@
+ Terraform 依存関係により変更が反映できない時の対処方法（terraform taintの使い方）
+１．背景・やりたいこと
+Terraformによる構成変更
+
+    AWSインフラをTerraformでコード化している場合、その構成変更もコードの修正→反映のような流れで実施する。
+    AWSのリソースには依存関係（作成時に守るべき順番がある）。例えば、VPCを作成せずEC2を作成することは、出来ないのような。
+    Terraformにおいてもこの依存関係が暗黙で管理されているため、あるリソースの変更において変更対象以外のリソースの再作成が行われることがある。（例えば、EC2のuserdataを変更すると、EC2毎再作成される。）
+    稀にだが、変更するリソースや変更のパターンにより、上記のような依存関係があるリソースの再作成が実施されず、変更対象のデプロイが失敗するケースがある。
+    上記の場合、何度デプロイ（apply）しても変更が反映できない状況となってしまう。
+    このような場合、変更対象リソース以外に再作成が必要なリソースを強制的に再作成することにより、変更を反映させることができる。
+
+
+具体例
+
+    ECSでPrivateHostZoneでのServiceDiscoveryを設定している。
+    ServiceDiscoveryでは、どのVPCにてリソースの名前登録＆解決を行うかを、VPC associationとして設定する必要がある。
+    これらのデプロイが完了した後に、関連付けるVPCを変更しようとした場合、ServiceDiscovery設定の再作成が必要になる。
+    しかし、ECS Service定義にてそのPrivateHostZoneにレコードが登録されているため、この再作成が失敗する。（依存関係にてECS Serviceが再作成されてくれない）
+    この対処として、ECS Serviceをtaintにて強制的に再作成することでデプロイできる。
+
+
+
+２．実施手順
+１． 構成
+
+・以下のようなECSサービス、ServiceDiscoveryがデプロイされている。（それ以外のリソースもあるが省略）
+
+ECSサービス
+
+/* --------------------------------------------
+  ECS Service Section
+---------------------------------------------*/
+# ECS Service
+# -> task_definition
+# -> ecs_cluster
+resource "aws_ecs_service" "td-agent" {
+  name            = "td-agent"
+  cluster         = aws_ecs_cluster.satoshi-cluster.id
+  task_definition = aws_ecs_task_definition.td-agent.arn
+  desired_count   = 1
+
+  network_configuration {
+    subnets         = aws_subnet.private.*.id
+    security_groups = [module.internal-fluentd.security_group_id]
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.td-agent.arn
+  }
+}
+
+
+
+サービスディスカバリ
+
+/* --------------------------------------------
+  Service Discovery
+---------------------------------------------*/
+# name space
+resource "aws_service_discovery_private_dns_namespace" "td-agent" {
+  name = "${var.log_domain}"
+  vpc  = aws_vpc.satoshi-terraform.id
+}
+
+# service discovery record
+resource "aws_service_discovery_service" "td-agent" {
+  name = "${var.fluentd_host}"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.td-agent.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
+
+
+２．変更の実施
+
+・先のコードのVPC関連付けを変更する
+
+/* --------------------------------------------
+  Service Discovery
+---------------------------------------------*/
+# name space
+resource "aws_service_discovery_private_dns_namespace" "td-agent" {
+  name = "${var.log_domain}"
+  vpc  = data.aws_vpc.test-vpc.id //ここを変更
+}
+
+
+
+
+3．デプロイ（terraform plan）
+
+・以下のようにエラーとなり、変更が反映されない
+
+~/environment/satoshi-terraform (work04_addFluentd) $ terraform apply -auto-approve
+data.template_file.userdata-ecs-01: Refreshing state...
+data.template_file.perl: Refreshing state...
+
+//　～中略～　//
+
+Error: error deleting Service Discovery Service (srv-32aqmoeerighcejz): ResourceInUse: Service contains registered instances; delete the instances before deleting the service
+
+
+
+4．Terraform taint
+
+・ServiceDiscoveryの再作成を妨げている、ECS サービスをtaintする。
+
+    taintを実行すると、次にterraform planを実施した段階で当該のリソースを再作成対象としてマークする。そのため、そのplanを-outオプションでファイルに出力しておくことで、apply時に強制的に再作成するapplyができる。
+
+
+~/environment/satoshi-terraform (work04_addFluentd) $ terraform taint aws_ecs_service.td-agent
+Resource instance aws_ecs_service.td-agent has been marked as tainted.
+
+
+5．Terraform plan
+
+~/environment/satoshi-terraform (work04_addFluentd) $ terraform plan -out=planfile
+Refreshing Terraform state in-memory prior to plan...
+The refreshed state will be used to calculate this plan, but will not be
+persisted to local or remote state storage.
+
+
+// ～中略～//
+
+
+//↓のようにECS serviceが再作成されるplanとなる。
+
+Terraform will perform the following actions:
+
+  # aws_ecs_service.td-agent is tainted, so must be replaced
+-/+ resource "aws_ecs_service" "td-agent" {
+        cluster                            = "arn:aws:ecs:ap-northeast-1:515317791273:cluster/satoshi-ecs-clutesr"
+        deployment_maximum_percent         = 200
+        deployment_minimum_healthy_percent = 100
+        desired_count                      = 1
+        enable_ecs_managed_tags            = false
+      - health_check_grace_period_seconds  = 0 -> null
+      ~ iam_role                           = "aws-service-role" -> (known after apply)
+      ~ id                                 = "arn:aws:ecs:ap-northeast-1:515317791273:service/td-agent" -> (known after apply)
+      ~ launch_type                        = "EC2" -> (known after apply)
+        name                               = "td-agent"
+      + platform_version                   = (known after apply)
+      - propagate_tags                     = "NONE" -> null
+        scheduling_strategy                = "REPLICA"
+      - tags                               = {} -> null
+        task_definition                    = "arn:aws:ecs:ap-northeast-1:515317791273:task-definition/td-agent:28"
+
+      - deployment_controller {
+          - type = "ECS" -> null
+        }
+
+        network_configuration {
+            assign_public_ip = false
+            security_groups  = [
+                "sg-0060b97e25d4fa219",
+            ]
+            subnets          = [
+                "subnet-067180ba7a89ed18a",
+                "subnet-09db1ac5d70cd4a09",
+            ]
+        }
+
+      + placement_strategy {
+          + field = (known after apply)
+          + type  = (known after apply)
+        }
+
+      - service_registries {
+          - container_port = 0 -> null
+          - port           = 0 -> null
+          - registry_arn   = "arn:aws:servicediscovery:ap-northeast-1:515317791273:service/srv-32aqmoeerighcejz" -> null
+        }
+      + service_registries {
+          + registry_arn = (known after apply)
+        }
+    }
+
+  # aws_service_discovery_private_dns_namespace.td-agent must be replaced
+-/+ resource "aws_service_discovery_private_dns_namespace" "td-agent" {
+      ~ arn         = "arn:aws:servicediscovery:ap-northeast-1:515317791273:namespace/ns-ueyr5rfxpruvzwej" -> (known after apply)
+      ~ hosted_zone = "Z06785228CQYLROU5RFP" -> (known after apply)
+      ~ id          = "ns-ueyr5rfxpruvzwej" -> (known after apply)
+        name        = "log"
+      ~ vpc         = "vpc-28f2e34c" -> "vpc-003847712f9330194" # forces replacement
+    }
+
+  # aws_service_discovery_service.td-agent must be replaced
+-/+ resource "aws_service_discovery_service" "td-agent" {
+      ~ arn          = "arn:aws:servicediscovery:ap-northeast-1:515317791273:service/srv-32aqmoeerighcejz" -> (known after apply)
+      ~ id           = "srv-32aqmoeerighcejz" -> (known after apply)
+        name         = "td-agent"
+      ~ namespace_id = "ns-ueyr5rfxpruvzwej" -> (known after apply)
+
+      ~ dns_config {
+          ~ namespace_id   = "ns-ueyr5rfxpruvzwej" -> (known after apply) # forces replacement
+            routing_policy = "MULTIVALUE"
+
+            dns_records {
+                ttl  = 10
+                type = "A"
+            }
+        }
+
+        health_check_custom_config {
+            failure_threshold = 1
+        }
+    }
+
+Plan: 3 to add, 0 to change, 3 to destroy.
+
+
+6．Terraform apply
+
+//↓taintされたリソースが最初にdestroyされ、再作成されている。
+~/environment/satoshi-terraform (work04_addFluentd) $ terraform apply "planfile"
+aws_ecs_service.td-agent: Destroying... [id=arn:aws:ecs:ap-northeast-1:515317791273:service/td-agent]
+aws_ecs_service.td-agent: Still destroying... [id=arn:aws:ecs:ap-northeast-1:515317791273:service/td-agent, 10s elapsed]
+aws_ecs_service.td-agent: Still destroying... [id=arn:aws:ecs:ap-northeast-1:515317791273:service/td-agent, 20s elapsed]
+aws_ecs_service.td-agent: Still destroying... [id=arn:aws:ecs:ap-northeast-1:515317791273:service/td-agent, 30s elapsed]
+aws_ecs_service.td-agent: Still destroying... [id=arn:aws:ecs:ap-northeast-1:515317791273:service/td-agent, 40s elapsed]
+aws_ecs_service.td-agent: Destruction complete after 45s
+aws_service_discovery_service.td-agent: Destroying... [id=srv-32aqmoeerighcejz]
+aws_service_discovery_service.td-agent: Destruction complete after 0s
+aws_service_discovery_private_dns_namespace.td-agent: Destroying... [id=ns-ueyr5rfxpruvzwej]
+aws_service_discovery_private_dns_namespace.td-agent: Still destroying... [id=ns-ueyr5rfxpruvzwej, 10s elapsed]
+aws_service_discovery_private_dns_namespace.td-agent: Still destroying... [id=ns-ueyr5rfxpruvzwej, 20s elapsed]
+aws_service_discovery_private_dns_namespace.td-agent: Still destroying... [id=ns-ueyr5rfxpruvzwej, 30s elapsed]
+aws_service_discovery_private_dns_namespace.td-agent: Still destroying... [id=ns-ueyr5rfxpruvzwej, 40s elapsed]
+aws_service_discovery_private_dns_namespace.td-agent: Destruction complete after 43s
+aws_service_discovery_private_dns_namespace.td-agent: Creating...
+aws_service_discovery_private_dns_namespace.td-agent: Still creating... [10s elapsed]
+
+//　～中略～　//
+
+//エラーなくデプロイが完了
+Apply complete! Resources: 3 added, 0 changed, 3 destroyed.
+
+Outputs:
+
+alb_dns_name = satoshi-alb-426973429.ap-northeast-1.elb.amazonaws.com
+public_ip = ssh -i ~/nakamura-SSH-key.pem -l ec2-user 18.182.3.55
