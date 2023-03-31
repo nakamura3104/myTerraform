@@ -1,4 +1,14 @@
 
+
+# YOUR_STORAGE_ACCOUNT_NAME: 対象のストレージアカウント名
+# YOUR_RESOURCE_GROUP_NAME: ストレージアカウントが含まれるリソースグループ名
+# IP_ADDRESS: 許可する任意のIPアドレス
+#例えば、ストレージアカウント名がmystorageaccount、リソースグループ名がmyresourcegroupで、許可するIPアドレスが192.168.0.1の場合、次のコマンドを実行します。
+
+az storage account update --name mystorageaccount --resource-group myresourcegroup --add properties.networkAcls.ipRules="[{'action': 'Allow', 'value': '192.168.0.1'}]"
+
+
+
 ################################################3
 #
 # Git branch in the CloudShell prompt
