@@ -80,3 +80,21 @@ resource "azurerm_application_gateway" "appgw" {
     max_request_body_size_kb = 128
   }
 }
+
+
+locals {
+  input_map = {
+    "key1" = "value1"
+    "key2" = "value2"
+    "key3" = "value3"
+  }
+
+  modified_map = {
+    for key, value in local.input_map :
+    "prefix-${key}" => value
+  }
+}
+
+output "modified_map" {
+  value = local.modified_map
+}
