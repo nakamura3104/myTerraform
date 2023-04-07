@@ -98,3 +98,91 @@ locals {
 output "modified_map" {
   value = local.modified_map
 }
+
+  
+  #
+  # With SSL Cert
+  #
+  #
+  #
+  
+  
+  provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "example-public-ip"
+  resource_group_name = "<your-resource-group>"
+  location            = "eastus"
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+resource "azurerm_application_gateway" "example" {
+  name                = "example-appgw"
+  resource_group_name = "<your-resource-group>"
+  location            = "eastus"
+
+  sku {
+    name     = "Standard_v2"
+    tier     = "Standard_v2"
+    capacity = 2
+  }
+
+  gateway_ip_configuration {
+    name      = "example-gateway-ip-configuration"
+    subnet_id = "<your-subnet-id>"
+  }
+
+  frontend_port {
+    name = "example-frontend-port"
+    port = 443
+  }
+
+  frontend_ip_configuration {
+    name                 = "example-frontend-ip-configuration"
+    public_ip_address_id = azurerm_public_ip.example.id
+  }
+
+  backend_address_pool {
+    name = "example-backend-address-pool"
+  }
+
+  backend_http_settings {
+    name                  = "example-backend-http-settings"
+    cookie_based_affinity = "Disabled"
+    path                  = "/path1/"
+    port                  = 80
+    protocol              = "Http"
+    request_timeout       = 60
+  }
+
+  http_listener {
+    name                           = "example-http-listener"
+    frontend_ip_configuration_name = "example-frontend-ip-configuration"
+    frontend_port_name             = "example-frontend-port"
+    protocol                       = "Https"
+    ssl_certificate_name           = "example-ssl-certificate"
+  }
+
+  request_routing_rule {
+    name                       = "example-request-routing-rule"
+    rule_type                  = "Basic"
+    http_listener_name         = "example-http-listener"
+    backend_address_pool_name  = "example-backend-address-pool"
+    backend_http_settings_name = "example-backend-http-settings"
+  }
+
+  ssl_certificate {
+    name                = "example-ssl-certificate"
+    key_vault_secret_id = "<your-key-vault-certificate-secret-id>"
+  }
+
+  identity {
+    type = "UserAssigned"
+    identity_ids = [
+      "<your-user-assigned-managed-identity-id>",
+    ]
+  }
+}
