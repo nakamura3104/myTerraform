@@ -1,4 +1,7 @@
 
+curl -X GET "https://your_storage_account_name.blob.core.windows.net/your_container_name/your_blob_name?your_sas_token"
+
+
 
 # YOUR_STORAGE_ACCOUNT_NAME: 対象のストレージアカウント名
 # YOUR_RESOURCE_GROUP_NAME: ストレージアカウントが含まれるリソースグループ名
@@ -31,4 +34,7 @@ export ARM_CLIENT_ID=$(az account show --query 'user.name' -o tsv)
 export ARM_CLIENT_SECRET=$ACCESS_TOKEN
 export ARM_TENANT_ID=$(az account show --query 'tenantId' -o tsv)
 export ARM_SUBSCRIPTION_ID=$(az account show --query 'id' -o tsv)
+
+
+
 
