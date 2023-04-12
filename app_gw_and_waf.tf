@@ -186,3 +186,120 @@ resource "azurerm_application_gateway" "example" {
     ]
   }
 }
+
+  
+  
+  
+  #
+  #
+  #
+  
+  provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "example-resources"
+  location = "West Europe"
+}
+
+resource "azurerm_virtual_network" "example" {
+  name                = "example-vnet"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+  address_space       = ["10.0.0.0/16"]
+}
+
+resource "azurerm_subnet" "example" {
+  name                 = "example-subnet"
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.example.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "example-public-ip"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+  allocation_method   = "Dynamic"
+}
+
+resource "azurerm_application_gateway" "example" {
+  name                = "example-appgw"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  sku {
+    name     = "Standard_Small"
+    tier     = "Standard"
+    capacity = 2
+  }
+
+  gateway_ip_configuration {
+    name      = "example-gateway-ip-configuration"
+    subnet_id = azurerm_subnet.example.id
+  }
+
+  frontend_port {
+    name = "example-frontend-port"
+    port = 80
+  }
+
+  frontend_ip_configuration {
+    name                 = "example-frontend-ip-configuration"
+    public_ip_address_id = azurerm_public_ip.example.id
+  }
+
+  backend_address_pool {
+    name = "example-backend-address-pool"
+  }
+
+  backend_http_settings {
+    name                  = "example-backend-http-settings"
+    cookie_based_affinity = "Disabled"
+    port                  = 80
+    protocol              = "Http"
+    request_timeout       = 60
+  }
+
+  http_listener {
+    name                           = "example-http-listener"
+    frontend_ip_configuration_name = "example-frontend-ip-configuration"
+    frontend_port_name             = "example-frontend-port"
+    protocol                       = "Http"
+  }
+
+  request_routing_rule {
+    name                       = "example-request-routing-rule"
+    rule_type                  = "PathBasedRouting"
+    http_listener_name         = "example-http-listener"
+    url_path_map_name          = "example-url-path-map"
+  }
+
+  url_path_map {
+    name = "example-url-path-map"
+    default_backend_address_pool_name  = "example-backend-address-pool"
+    default_backend_http_settings_name = "example-backend-http-settings"
+
+    path_rule {
+      name = "path-rule-webapp1"
+      paths = ["/webapp1/*"]
+
+      backend_address_pool_name  = "example-backend-address-pool"
+      backend_http_settings_name = "example-backend-http-settings"
+      backend_address_pool_id    = azurerm_app_service.example["webapp1"].id
+    }
+
+    path_rule {
+      name = "path-rule-webapp2"
+      paths = ["/webapp2/*"]
+
+      backend_address_pool_name  = "example-backend-address-pool"
+      backend_http_settings_name = "example-backend-http-settings"
+      backend_address_pool_id    = azurerm_app_service.example["webapp2"].id
+    }
+  }
+}
+
+locals {
+  web_apps =
