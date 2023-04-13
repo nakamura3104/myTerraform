@@ -32,3 +32,29 @@ app_urls = {
 "service-api" = "https://service-api.azurewebsites.net"
 }
 ```
+
+
+ - for_eachで作成したリソースの一括参照
+
+```
+variable "web_apps" {
+  default = {
+    web_app_1 = "web-app-1"
+    web_app_2 = "web-app-2"
+  }
+}
+
+resource "azurerm_windows_web_app" "example" {
+  for_each = var.web_apps
+
+  # ... other configuration ...
+}
+
+locals {
+  web_app_map = {
+    for key, value in azurerm_windows_web_app.example :
+    key => value
+  }
+}
+
+```
