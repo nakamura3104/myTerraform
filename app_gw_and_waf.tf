@@ -1,3 +1,15 @@
+# filter specifice keys from for_each map.
+locals {
+  extracted_resources = { for k, v in random_pet.example : k => v if k == "foo" || k == "bar" }
+  extracted_resources_list = values(local.extracted_resources)
+}
+
+output "selected_resources_list" {
+  value = local.extracted_resources_list
+}
+
+  
+
 # Create the Application Gateway with WAF
 resource "azurerm_application_gateway" "appgw" {
   name                = "appgateway"
