@@ -1,6 +1,6 @@
 # filter specifice keys from for_each map.
 locals {
-  extracted_resources = { for k, v in random_pet.example : k => v if k == "foo" || k == "bar" }
+  extracted_resources = { for k, v in random_pet.example : k => v if substr(k, -3, length(k)) == "foo" }
   extracted_resources_list = values(local.extracted_resources)
 }
 
