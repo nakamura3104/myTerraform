@@ -5,7 +5,7 @@ def lambda_handler(event, context):
     event_str = json.dumps(event, indent=2)
 
     # HTTPメソッドを取得
-    http_method = event['httpMethod']
+    http_method = event['requestContext']['http']['method']
 
     # メソッドに応じたレスポンスを作成
     if http_method == 'GET':
@@ -15,7 +15,7 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json"
             },
             "body": json.dumps({
-                "message": "Hello from Lambda and API Gateway with a GET request!",
+                "message": "Hello from Lambda and API Gateway (HTTP API) with a GET request!",
                 "event": event_str
             })
         }
@@ -25,7 +25,7 @@ def lambda_handler(event, context):
             "headers": {
                 "Content-Type": "text/plain"
             },
-            "body": "Hello from Lambda and API Gateway with a PUT request!"
+            "body": "Hello from Lambda and API Gateway (HTTP API) with a PUT request!"
         }
     else:
         response = {
@@ -34,9 +34,4 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json"
             },
             "body": json.dumps({
-                "message": "Unsupported method.",
-                "event": event_str
-            })
-        }
-
-    return response
+                "message
