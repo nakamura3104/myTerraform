@@ -34,9 +34,30 @@ function signIn(username, password) {
       console.log('Access token: ' + result.getAccessToken().getJwtToken());
       console.log('ID token: ' + result.getIdToken().getJwtToken());
       console.log('Refresh token: ' + result.getRefreshToken().getToken());
+
+      // ここでAPIを呼び出します
+      callApi(result.getIdToken().getJwtToken());
     },
     onFailure: (err) => {
       console.error('Sign in error: ', err);
     },
+  });
+}
+
+// API呼び出し
+function callApi(idToken) {
+  $.ajax({
+    url: 'your_api_endpoint',
+    headers: {
+      Authorization: idToken
+    },
+    method: 'GET',
+    success: (data) => {
+      // レスポンスを表示します
+      console.log('API response:', data);
+    },
+    error: (jqXHR, textStatus, errorThrown) => {
+      console.error('API call error:', errorThrown);
+    }
   });
 }
