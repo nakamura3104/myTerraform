@@ -1,3 +1,14 @@
+r/leE5JbSTBNfAEl6VjRHT9uMrrvfcbwMT5N3Q/tPpQ=
+
+
+[Interface]
+PrivateKey = <YOUR_PRIVATE_KEY>
+Address = 10.64.3.204/32
+
+[Peer]
+PublicKey = woha3spWgVr2luPW/8J0OLlP2Csh7r7qu9Umyh7x4Hg=
+AllowedIPs = 100.127.0.0/21, 100.127.10.0/28, 100.127.10.128/25, 100.127.10.17/32, 100.127.10.18/31, 100.127.10.20/30, 100.127.10.24/29, 100.127.10.32/27, 100.127.10.64/26, 100.127.11.0/24, 100.127.12.0/22, 100.127.128.0/17, 100.127.16.0/20, 100.127.32.0/19, 100.127.64.0/18, 100.127.8.0/23, 54.250.252.67/32
+Endpoint = beck.arc.soracom.io:11010
 
 
 module "describe_regions_for_ec2" {
